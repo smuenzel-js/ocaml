@@ -163,6 +163,13 @@ module Stdlib : sig
        Invalid_argument if the two arrays are determined to have
        different lengths. *)
 
+    val for_alli : (int -> 'a -> bool) -> 'a array -> bool
+    (** Same as {!Array.for_all}, but the
+        function is applied with the index of the element as first argument,
+        and the element itself as second argument. *)
+
+    val all_somes : 'a option array -> 'a array option
+
     val map_unzip : ('a -> 'b * 'c) -> 'a array -> ('b array) * ('c array)
     val mapi_unzip : (int -> 'a -> 'b * 'c) -> 'a array -> ('b array) * ('c array)
 

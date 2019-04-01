@@ -231,6 +231,21 @@ module Stdlib = struct
         else loop (succ i) in
       loop 0
 
+
+    let for_alli p a =
+      let n = Array.length a in
+      let rec loop i =
+        if i = n then true
+        else if p i (Array.unsafe_get a i) then loop (succ i)
+        else false in
+      loop 0
+
+    let all_somes a =
+      try
+        Some (Array.map (function None -> raise_notrace Exit | Some x -> x) a)
+      with
+      | Exit -> None
+
     let mapi_unzip f a =
       let n = Array.length a in
       if n = 0
