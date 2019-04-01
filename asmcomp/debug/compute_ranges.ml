@@ -454,6 +454,7 @@ module Make (S : Compute_ranges_intf.S_functor) = struct
     end;
     match insn.desc with
     | Lend -> first_insn
+    | Ladjust_trap_depth _
     | Lprologue | Lop _ | Lreloadretaddr | Lreturn | Llabel _
     | Lbranch _ | Lcondbranch _ | Lcondbranch3 _ | Lswitch _
     | Lentertrap | Lpushtrap _ | Lpoptrap | Lraise _ ->

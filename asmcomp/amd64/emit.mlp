@@ -506,13 +506,24 @@ let emit_instr fallthrough i =
         | _ -> I.mov (reg src) (reg dst)
         end
   | Lop(Iconst_int n) ->
-      if n = 0n then begin
+       if n = 0n then begin
+         match i.res.(0).loc with
+        | Reg _ ->
+          (* Clearing the bottom half also clears the top half (except for
+             64-bit-only registers where the behaviour is as if the operands
+             were 64 bit). *)
+          I.xor (res32 i 0) (res32 i 0)
+        | _ ->
+          I.mov (int 0) (res i 0)
+      end else if (n > 0n) && (n <= 0xFFFF_FFFFn) then begin
         match i.res.(0).loc with
-        | Reg _ -> I.xor (res i 0) (res i 0)
-        | _     -> I.mov (int 0) (res i 0)
-      end
-      else
-        I.mov (nat n) (res i 0)
+        | Reg _ ->
+          (* Similarly, setting only the bottom half clears the top half. *)
+          I.mov (nat n) (res32 i 0)
+        | _ ->
+          I.mov (nat n) (res i 0)
+      end else
+         I.mov (nat n) (res i 0)
   | Lop(Iconst_float f) ->
       begin match f with
       | 0x0000_0000_0000_0000L ->       (* +0.0 *)
@@ -707,6 +718,16 @@ let emit_instr fallthrough i =
       let lbl = bound_error_label ?label:label_after_error i.dbg ~spacetime in
       I.cmp (int n) (arg i 0);
       I.jbe (label lbl)
+  | Lop(Iintop_imm (Iand, n)) when n >= 0 && n < 0x01_0000_0000 ->
+    begin match i.res.(0).loc with
+    | Reg _ -> I.and_ (int n) (res32 i 0)
+    | _     -> I.and_ (int n) (res i 0)
+    end
+  | Lop(Iintop Ixor) when i.arg.(1).loc = i.res.(0).loc ->
+    begin match i.res.(0).loc with
+    | Reg _ -> I.xor (res32 i 0) (res32 i 0)
+    | _     -> I.xor (arg i 1) (res i 0)
+    end
   | Lop(Iintop(Idiv | Imod)) ->
       I.cqo ();
       I.idiv (arg i 1)
