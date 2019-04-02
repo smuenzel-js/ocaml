@@ -812,20 +812,61 @@ let invert_then_else = function
   | Then_false_else_true -> Then_true_else_false
   | Unknown -> Unknown
 
+let rec simplify_cond = function
+  | Cop(Ccmpi cmpop
+       , [ Cop(Caddi, [Cop(Clsl, [left; Cconst_int (1, _)], _); Cconst_int (1, _)], _)
+         ; Cconst_int (right_i,right_dbg)
+         ]
+       , dbg_cmp
+       ) ->
+    log_debug "CondLeft" dbg_cmp;
+    Cop (Ccmpi cmpop, [ left; Cconst_int (right_i asr 1, right_dbg)], dbg_cmp)
+    |> simplify_cond
+  | Cop(Ccmpi cmpop
+       , [ Cconst_int (left_i,left_dbg)
+         ; Cop(Caddi, [Cop(Clsl, [right; Cconst_int (1, _)], _); Cconst_int (1, _)], _)
+         ]
+       , dbg_cmp
+       ) ->
+    log_debug "CondRight" dbg_cmp;
+    Cop (Ccmpi cmpop, [ Cconst_int (left_i asr 1, left_dbg); right], dbg_cmp)
+    |> simplify_cond
+  | Cop (Ccmpi (Ceq | Cne as eqop)
+        , ( ([ Cop(Ccmpi cmpop, [ left; right ], dbg_cmp)
+            ; Cconst_int (0, _)
+            ])
+          | ([ Cconst_int (0, _)
+             ; Cop(Ccmpi cmpop, [ left; right ], dbg_cmp)
+            ])
+          )
+        , dbg
+        ) ->
+    let cmpop =
+      match eqop with
+      | Cne -> cmpop
+      | Ceq -> negate_integer_comparison cmpop
+      | _ -> assert false
+    in
+    log_debug "CondElim" dbg;
+    Cop (Ccmpi cmpop, [ left; right ], dbg_cmp)
+  | cond -> cond
+
 let mk_if_then_else dbg cond ifso_dbg ifso ifnot_dbg ifnot =
   map_result dbg ~inrec:Plain cond
     (fun inrec cond ->
        match cond with
        | Cconst_int (0, _) ->
-           log_inrec inrec "Mk_if_the_else/Ifnot" dbg;
-           ifnot
+         log_inrec inrec "Mk_if_the_else/Ifnot" dbg;
+         ifnot
        | Cconst_int (1, _) ->
-           log_inrec inrec "Mk_if_the_else/Ifso" dbg;
-           ifso
+         log_inrec inrec "Mk_if_the_else/Ifso" dbg;
+         ifso
        | _ ->
-           Cifthenelse(cond, ifso_dbg, ifso, ifnot_dbg, ifnot, dbg)
-           |> extract_shared_head "ITE" dbg
+         let cond = simplify_cond cond in
+         Cifthenelse(cond, ifso_dbg, ifso, ifnot_dbg, ifnot, dbg)
+         |> extract_shared_head "ITE" dbg
     )
+
 
 let mk_not dbg cmm =
   map_result dbg ~inrec:Plain cmm
