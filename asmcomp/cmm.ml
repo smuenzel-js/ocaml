@@ -222,3 +222,16 @@ let ccatch (i, ids, e1, e2, dbg) =
 
 let reset () =
   label_counter := 99
+
+let rec map_single_tail f = function
+  | Clet (id, exp, body) ->
+      let result = map_single_tail f body in
+      Clet (id, exp, result)
+  | Cphantom_let (var, defining_expr, body) ->
+      let result = map_single_tail f body in
+      Cphantom_let (var, defining_expr, result)
+  | Csequence (s1, s2) ->
+      let result = map_single_tail f s2 in
+      Csequence (s1, result)
+  | body ->
+      f body

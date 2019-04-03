@@ -219,3 +219,10 @@ val ccatch :
   -> expression
 
 val reset : unit -> unit
+
+val map_single_tail : (expression -> expression) -> expression -> expression
+(** Apply the transformation to an expression, trying to push it
+    to the innermost sub-expression that can produce the final result.
+    This function will not recurse into any expression that contain
+    more than one result expression, meaning the transformation will be
+    applied exactly once *)
