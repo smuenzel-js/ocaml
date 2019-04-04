@@ -1723,8 +1723,7 @@ struct
   let make_isout h arg = Cop (Ccmpa Clt, [h ; arg], Debuginfo.none)
   let make_isin h arg = Cop (Ccmpa Cge, [h ; arg], Debuginfo.none)
   let make_if cond ifso ifnot =
-    Cifthenelse (cond, Debuginfo.none, ifso, Debuginfo.none, ifnot,
-      Debuginfo.none)
+    mk_if_then_else Debuginfo.none cond Debuginfo.none ifso Debuginfo.none ifnot
   let make_switch loc arg cases actions =
     let dbg = Debuginfo.from_location loc in
     let actions = Array.map (fun expr -> expr, dbg) actions in
