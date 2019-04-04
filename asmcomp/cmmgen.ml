@@ -285,20 +285,31 @@ let untag_int i dbg =
       Cop(Casr, [c; Cconst_int (1, dbg)], dbg)
   | c -> Cop(Casr, [c; Cconst_int (1, dbg)], dbg)
 
-(* Description of the "then" and "else" continuations in [transl_if]. If
-   the "then" continuation is true and the "else" continuation is false then
-   we can use the condition directly as the result. Similarly, if the "then"
-   continuation is false and the "else" continuation is true then we can use
-   the negation of the condition directly as the result. *)
-type then_else =
-  | Then_true_else_false
-  | Then_false_else_true
-  | Unknown
-
-let invert_then_else = function
-  | Then_true_else_false -> Then_false_else_true
-  | Then_false_else_true -> Then_true_else_false
-  | Unknown -> Unknown
+let mk_not dbg cmm =
+  match cmm with
+  | Cop(Caddi,
+        [Cop(Clsl, [c; Cconst_int (1, _)], _); Cconst_int (1, _)], dbg') ->
+    begin
+      match c with
+      | Cop(Ccmpi cmp, [c1; c2], dbg'') ->
+          tag_int
+            (Cop(Ccmpi (negate_integer_comparison cmp), [c1; c2], dbg'')) dbg'
+      | Cop(Ccmpa cmp, [c1; c2], dbg'') ->
+          tag_int
+            (Cop(Ccmpa (negate_integer_comparison cmp), [c1; c2], dbg'')) dbg'
+      | Cop(Ccmpf cmp, [c1; c2], dbg'') ->
+          tag_int
+            (Cop(Ccmpf (negate_float_comparison cmp), [c1; c2], dbg'')) dbg'
+      | _ ->
+        (* 0 -> 3, 1 -> 1 *)
+        Cop(Csubi,
+          [Cconst_int (3, dbg); Cop(Clsl, [c; Cconst_int (1, dbg)], dbg)], dbg)
+    end
+  | Cconst_int (3, _) -> Cconst_int (1, dbg)
+  | Cconst_int (1, _) -> Cconst_int (3, dbg)
+  | c ->
+      (* 1 -> 3, 3 -> 1 *)
+      Cop(Csubi, [Cconst_int (4, dbg); c], dbg)
 
 let rec simplify_cond = function
   | Cop(Ccmpi cmpop
@@ -342,35 +353,16 @@ let mk_if_then_else dbg cond ifso_dbg ifso ifnot_dbg ifnot =
   | Cconst_int (0, _) -> ifnot
   | Cconst_int (1, _) -> ifso
   | _ ->
-      let cond = simplify_cond cond in
-      Cifthenelse(cond, ifso_dbg, ifso, ifnot_dbg, ifnot, dbg)
-
-let mk_not dbg cmm =
-  match cmm with
-  | Cop(Caddi,
-        [Cop(Clsl, [c; Cconst_int (1, _)], _); Cconst_int (1, _)], dbg') ->
-    begin
-      match c with
-      | Cop(Ccmpi cmp, [c1; c2], dbg'') ->
-          tag_int
-            (Cop(Ccmpi (negate_integer_comparison cmp), [c1; c2], dbg'')) dbg'
-      | Cop(Ccmpa cmp, [c1; c2], dbg'') ->
-          tag_int
-            (Cop(Ccmpa (negate_integer_comparison cmp), [c1; c2], dbg'')) dbg'
-      | Cop(Ccmpf cmp, [c1; c2], dbg'') ->
-          tag_int
-            (Cop(Ccmpf (negate_float_comparison cmp), [c1; c2], dbg'')) dbg'
-      | _ ->
-        (* 0 -> 3, 1 -> 1 *)
-        Cop(Csubi,
-          [Cconst_int (3, dbg); Cop(Clsl, [c; Cconst_int (1, dbg)], dbg)], dbg)
-    end
-  | Cconst_int (3, _) -> Cconst_int (1, dbg)
-  | Cconst_int (1, _) -> Cconst_int (3, dbg)
-  | c ->
-      (* 1 -> 3, 3 -> 1 *)
-      Cop(Csubi, [Cconst_int (4, dbg); c], dbg)
-
+    let cond = simplify_cond cond in
+    (* If the "then" continuation is true and the "else" continuation is false
+       then we can use the condition directly as the result. Similarly, if the
+       "then" continuation is false and the "else" continuation is true then we
+       can use the negation of the condition directly as the result. *)
+    match ifso, ifnot with
+    | Cconst_pointer (3,_), Cconst_pointer (1,_) -> tag_int cond dbg
+    | Cconst_pointer (1,_), Cconst_pointer (3,_) -> mk_not dbg (tag_int cond dbg)
+    | _,_ ->
+        Cifthenelse(cond, ifso_dbg, ifso, ifnot_dbg, ifnot, dbg)
 
 let create_loop body dbg =
   let cont = next_raise_count () in
@@ -2260,7 +2252,7 @@ let rec transl env e =
       let ifso_dbg = Debuginfo.none in
       let ifnot_dbg = Debuginfo.none in
       let dbg = Debuginfo.none in
-      transl_if env Unknown dbg cond
+      transl_if env dbg cond
         ifso_dbg (transl env ifso) ifnot_dbg (transl env ifnot)
   | Usequence(exp1, exp2) ->
       Csequence(remove_unit(transl env exp1), transl env exp2)
@@ -2270,7 +2262,7 @@ let rec transl env e =
       return_unit dbg
         (ccatch
            (raise_num, [],
-            create_loop(transl_if env Unknown dbg cond
+            create_loop(transl_if env dbg cond
                     dbg (remove_unit(transl env body))
                     dbg (Cexit (raise_num,[])))
               dbg,
@@ -2450,7 +2442,7 @@ and transl_prim_1 env p arg dbg =
       end
   (* Boolean operations *)
   | Pnot ->
-      transl_if env Then_false_else_true
+      transl_if env
         dbg arg
         dbg (Cconst_pointer (1, dbg))
         dbg (Cconst_pointer (3, dbg))
@@ -2535,7 +2527,7 @@ and transl_prim_2 env p arg1 arg2 dbg =
   (* Boolean operations *)
   | Psequand ->
       let dbg' = Debuginfo.none in
-      transl_sequand env Then_true_else_false
+      transl_sequand env
         dbg arg1
         dbg' arg2
         dbg (Cconst_pointer (3, dbg))
@@ -2545,7 +2537,7 @@ and transl_prim_2 env p arg1 arg2 dbg =
            Cifthenelse(test_bool dbg (Cvar id), transl env arg2, Cvar id)) *)
   | Psequor ->
       let dbg' = Debuginfo.none in
-      transl_sequor env Then_true_else_false
+      transl_sequor env
         dbg arg1
         dbg' arg2
         dbg (Cconst_pointer (3, dbg))
@@ -3031,7 +3023,7 @@ and make_shareable_cont dbg mk exp =
       dbg
   end
 
-and transl_if env (approx : then_else)
+and transl_if env
       (dbg : Debuginfo.t) cond
       (then_dbg : Debuginfo.t) then_
       (else_dbg : Debuginfo.t) else_ =
@@ -3042,13 +3034,13 @@ and transl_if env (approx : then_else)
       (* CR mshinwell: These Debuginfos will flow through from Clambda *)
       let inner_dbg = Debuginfo.none in
       let ifso_dbg = Debuginfo.none in
-      transl_sequand env approx
+      transl_sequand env
         inner_dbg arg1
         ifso_dbg arg2
         then_dbg then_
         else_dbg else_
   | Uprim (Psequand, [arg1; arg2], inner_dbg) ->
-      transl_sequand env approx
+      transl_sequand env
         inner_dbg arg1
         inner_dbg arg2
         then_dbg then_
@@ -3056,31 +3048,31 @@ and transl_if env (approx : then_else)
   | Uifthenelse (arg1, Uconst (Uconst_ptr 1), arg2) ->
       let inner_dbg = Debuginfo.none in
       let ifnot_dbg = Debuginfo.none in
-      transl_sequor env approx
+      transl_sequor env
         inner_dbg arg1
         ifnot_dbg arg2
         then_dbg then_
         else_dbg else_
   | Uprim (Psequor, [arg1; arg2], inner_dbg) ->
-      transl_sequor env approx
+      transl_sequor env
         inner_dbg arg1
         inner_dbg arg2
         then_dbg then_
         else_dbg else_
   | Uprim (Pnot, [arg], _dbg) ->
-      transl_if env (invert_then_else approx)
+      transl_if env
         dbg arg
         else_dbg else_
         then_dbg then_
   | Uifthenelse (Uconst (Uconst_ptr 1), ifso, _) ->
       let ifso_dbg = Debuginfo.none in
-      transl_if env approx
+      transl_if env
         ifso_dbg ifso
         then_dbg then_
         else_dbg else_
   | Uifthenelse (Uconst (Uconst_ptr 0), _, ifnot) ->
       let ifnot_dbg = Debuginfo.none in
-      transl_if env approx
+      transl_if env
         ifnot_dbg ifnot
         then_dbg then_
         else_dbg else_
@@ -3094,56 +3086,49 @@ and transl_if env (approx : then_else)
              (fun shareable_else ->
                 mk_if_then_else
                   inner_dbg (test_bool inner_dbg (transl env cond))
-                  ifso_dbg (transl_if env approx
+                  ifso_dbg (transl_if env
                     ifso_dbg ifso
                     then_dbg shareable_then
                     else_dbg shareable_else)
-                  ifnot_dbg (transl_if env approx
+                  ifnot_dbg (transl_if env
                     ifnot_dbg ifnot
                     then_dbg shareable_then
                     else_dbg shareable_else))
              else_)
         then_
-  | _ -> begin
-      match approx with
-      | Then_true_else_false ->
-          transl env cond
-      | Then_false_else_true ->
-          mk_not dbg (transl env cond)
-      | Unknown ->
-          mk_if_then_else
-            dbg (test_bool dbg (transl env cond))
-            then_dbg then_
-            else_dbg else_
-    end
+  | _ ->
+      mk_if_then_else
+        dbg (test_bool dbg (transl env cond))
+        then_dbg then_
+        else_dbg else_
 
-and transl_sequand env (approx : then_else)
+and transl_sequand env
       (arg1_dbg : Debuginfo.t) arg1
       (arg2_dbg : Debuginfo.t) arg2
       (then_dbg : Debuginfo.t) then_
       (else_dbg : Debuginfo.t) else_ =
   make_shareable_cont else_dbg
     (fun shareable_else ->
-       transl_if env Unknown
+       transl_if env
          arg1_dbg arg1
-         arg2_dbg (transl_if env approx
+         arg2_dbg (transl_if env
            arg2_dbg arg2
            then_dbg then_
            else_dbg shareable_else)
          else_dbg shareable_else)
     else_
 
-and transl_sequor env (approx : then_else)
+and transl_sequor env
       (arg1_dbg : Debuginfo.t) arg1
       (arg2_dbg : Debuginfo.t) arg2
       (then_dbg : Debuginfo.t) then_
       (else_dbg : Debuginfo.t) else_ =
   make_shareable_cont then_dbg
     (fun shareable_then ->
-       transl_if env Unknown
+       transl_if env
          arg1_dbg arg1
          then_dbg shareable_then
-         arg2_dbg (transl_if env approx
+         arg2_dbg (transl_if env
            arg2_dbg arg2
            then_dbg shareable_then
            else_dbg else_))
