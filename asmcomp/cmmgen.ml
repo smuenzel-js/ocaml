@@ -285,7 +285,7 @@ let untag_int i dbg =
       Cop(Casr, [c; Cconst_int (1, dbg)], dbg)
   | c -> Cop(Casr, [c; Cconst_int (1, dbg)], dbg)
 
-let mk_not dbg cmm =
+let mk_not_tagged dbg cmm =
   match cmm with
   | Cop(Caddi,
         [Cop(Clsl, [c; Cconst_int (1, _)], _); Cconst_int (1, _)], dbg') ->
@@ -359,8 +359,12 @@ let mk_if_then_else dbg cond ifso_dbg ifso ifnot_dbg ifnot =
        "then" continuation is false and the "else" continuation is true then we
        can use the negation of the condition directly as the result. *)
     match ifso, ifnot with
-    | Cconst_pointer (3,_), Cconst_pointer (1,_) -> tag_int cond dbg
-    | Cconst_pointer (1,_), Cconst_pointer (3,_) -> mk_not dbg (tag_int cond dbg)
+    | (Cconst_pointer (3,_) | Cconst_int (3,_))
+    , (Cconst_pointer (1,_) | Cconst_int (1,_)) ->
+        tag_int cond dbg
+    | (Cconst_pointer (1,_) | Cconst_int (1,_))
+    , (Cconst_pointer (3,_) | Cconst_int (3,_)) ->
+        mk_not_tagged dbg (tag_int cond dbg)
     | _,_ ->
         Cifthenelse(cond, ifso_dbg, ifso, ifnot_dbg, ifnot, dbg)
 
