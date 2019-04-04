@@ -319,18 +319,19 @@ let rec simplify_cond = function
       |> simplify_cond
   | Cop (Ccmpi (Ceq | Cne as eqop)
         , ( ([ Cop(Ccmpi cmpop, [ left; right ], dbg_cmp)
-             ; Cconst_int (0, _)
+             ; Cconst_int ((0 | 1 as true_false), _)
              ])
-          | ([ Cconst_int (0, _)
+          | ([ Cconst_int ((0 | 1 as true_false), _)
              ; Cop(Ccmpi cmpop, [ left; right ], dbg_cmp)
              ])
           )
-        , dbg
+        , _dbg
         ) ->
+      (* Simplify comparing the result of a comparison with true/false *)
       let cmpop =
-        match eqop with
-        | Cne -> cmpop
-        | Ceq -> negate_integer_comparison cmpop
+        match eqop, true_false with
+        | Cne,0 | Ceq,1 -> cmpop (* <> false, = true *)
+        | Ceq,0 | Cne,1 -> negate_integer_comparison cmpop (* = false, <> true*)
         | _ -> assert false
       in
       Cop (Ccmpi cmpop, [ left; right ], dbg_cmp)
