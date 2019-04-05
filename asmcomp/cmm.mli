@@ -226,3 +226,10 @@ val map_single_tail : (expression -> expression) -> expression -> expression
     This function will not recurse into any expression that contain
     more than one result expression, meaning the transformation will be
     applied exactly once *)
+
+val map_single_tail2 :
+  (expression -> expression -> expression) ->
+  expression -> expression -> expression
+(** Analog of [map_single_tail] for binary functions.
+    Assumes that the second argument is meant to be evaluated before
+    the first one, and preserves this evaluation order. *)
