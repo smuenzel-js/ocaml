@@ -53,8 +53,12 @@ type 'a t = {
   other : int;
   alphabeta : ('a alpha_of_gamma, 'a beta_of_delta) alphabeta;
 } constraint 'a = < delta : < beta : 'b >; gamma : < alpha : 'c > >
-Uncaught exception: Stack overflow
-
+val create :
+  ((< delta : < beta : 'a beta_of_delta >;
+      gamma : < alpha : 'a alpha_of_gamma > >
+    as 'a)
+   delta, 'a alpha_of_gamma)
+  Alphabeta.t -> 'a t = <fun>
 |}, Principal{|
 type 'a alpha = 'b constraint 'a = < alpha : 'b >
 type 'a beta = 'b constraint 'a = < beta : 'b >

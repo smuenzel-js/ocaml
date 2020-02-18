@@ -1633,10 +1633,14 @@ let try_expand_safe env ty =
     Btype.backtrack snap; raise Cannot_expand
 
 (* Fully expand the head of a type. *)
-let rec try_expand_head try_once env ty =
-  let ty' = try_once env ty in
-  try try_expand_head try_once env ty'
-  with Cannot_expand -> ty'
+let rec try_expand_head' ~fuel try_once env ty =
+  if fuel < 0 then ty else begin
+    let ty' = try_once env ty in
+    try try_expand_head' ~fuel:(pred fuel) try_once env ty'
+    with Cannot_expand -> ty'
+  end
+and try_expand_head try_once env ty =
+  try_expand_head' ~fuel:10_000 try_once env ty
 
 (* Unsafe full expansion, may raise Unify. *)
 let expand_head_unif env ty =
