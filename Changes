@@ -215,6 +215,10 @@ Working version
 
 ### Bug fixes:
 
+- #????, #9314: Limit the number of iterations of try_expand_head, to
+  pre-empt infinite loops in certain types with multiple constraints.
+  (Stefan Muenzel, review by ????)
+
 - #7683, #1499: Fixes one case where the evaluation order in native-code
   may not match the one in bytecode.
   (Nicolás Ojeda Bär, report by Pierre Chambart, review by Gabriel Scherer)
